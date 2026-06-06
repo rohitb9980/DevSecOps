@@ -192,9 +192,14 @@ jobs:
 
       - name: Expose application port for DAST
         run: |
+          # Wait for service to be ready
+
+          kubectl wait --for=condition=ready pod -l app=${{ env.APP_NAME }} -n default --timeout=300s
+
           # Forwarding Kubernetes service port to runner's localhost background process
-          kubectl port-forward svc/${{ env.APP_NAME }} 9092:8080 &
-          sleep 5 
+          
+          kubectl port-forward svc/${{ env.APP_NAME }} 3000:8080 &
+          sleep 10 
 
       - name: Run OWASP ZAP Baseline Scan
         uses: zaproxy/action-baseline@v0.14.0
