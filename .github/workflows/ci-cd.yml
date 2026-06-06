@@ -32,8 +32,13 @@ jobs:
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@v3.1.0
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+           SONAR_HOST_URL: https://sonarcloud.io
+        with:
+           args: >
+             -Dsonar.projectKey=rohitb9980_DevSecOps
+             -Dsonar.organization=rohitb9980
       
       - name: Run Snyk to check for vulnerabilities
         uses: snyk/actions/node@master
@@ -78,6 +83,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: Unit-Test
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
       - name: Upload Artifacts
         uses: actions/upload-artifact@v6
         with:
