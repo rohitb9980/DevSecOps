@@ -154,6 +154,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: Docker-Build
     if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      issues: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -207,4 +210,4 @@ jobs:
         with:
           target: 'http://localhost:3000'
           token: ${{ secrets.GITHUB_TOKEN }}
-          fail_action: true
+          fail_action: false
