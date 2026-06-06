@@ -194,12 +194,18 @@ jobs:
         run: |
           # Wait for service to be ready
 
-          kubectl wait --for=condition=ready pod -l app=${{ env.APP_NAME }} -n default --timeout=300s
+          kubectl wait --for=condition=ready pod -l app=${{ env.APP_NAME }} -n default --timeout=500s
 
           # Forwarding Kubernetes service port to runner's localhost background process
-          
+
           kubectl port-forward svc/${{ env.APP_NAME }} 3000:8080 &
           sleep 10 
+
+          # Verify port-forward is running
+          if ! kill -0 $PF_PID 2>/dev/null; then
+              echo "Port-forward failed to start"
+              exit 1
+          fi
 
       - name: Run OWASP ZAP Baseline Scan
         uses: zaproxy/action-baseline@v0.14.0
