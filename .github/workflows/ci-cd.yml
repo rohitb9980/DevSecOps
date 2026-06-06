@@ -180,8 +180,8 @@ jobs:
 
       - name: Deploy to Kind Cluster
         run: |
-          kubectl apply -f k8s/deployment.yaml
-          kubectl apply -f k8s/service.yaml
+          kubectl apply -f k8s/deployment.yml
+          kubectl apply -f k8s/service.yml
           kubectl set image deployment/${{ env.APP_NAME }} ${APP_NAME}=${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} -n default
           kubectl rollout status deployment/${{ env.APP_NAME }} -n default
 
@@ -199,6 +199,6 @@ jobs:
       - name: Run OWASP ZAP Baseline Scan
         uses: zaproxy/action-baseline@v0.14.0
         with:
-          target: 'http://localhost:9092'
+          target: 'http://localhost:3000'
           token: ${{ secrets.GITHUB_TOKEN }}
           fail_action: true
