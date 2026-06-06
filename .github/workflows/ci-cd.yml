@@ -1,39 +1,50 @@
-name: nodejs-ci-cd
+name: Build NodeJS application and Test with SAST,SCA and DAST
 
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
 
 env:
+  SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
   APP_NAME: hello-world-app
   IMAGE_NAME: hello-world-app
   IMAGE_TAG: ${{ github.sha }}
-  K8S_CLUSTER_NAME: hello-world-cluster
+  k8s_cluster_name: hello-world-cluster
+
 
 jobs:
-  build:
-    name: Build
+  build-and-test:
     runs-on: ubuntu-latest
+    name: Run unit Test and SAST Scan on Source code
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/checkout@v6
+       
+      - name: Setup NodeJs App
+        uses: actions/setup-node@v6
         with:
           node-version: '20'
-          cache: 'npm'
-
+          cache: npm
+      
       - name: Install dependencies
         run: npm install
 
-      - name: Build step
-        run: echo "No build needed for simple Node.js app"
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@v3.1.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      
+      - name: Run Snyk to check for vulnerabilities
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v6
         with:
           name: node-app-source
           path: |
@@ -42,71 +53,83 @@ jobs:
             package-lock.json
             Dockerfile
             k8s/
-
-  unit_test:
-    name: Unit Test
+        
+  Unit-Test:
+    name: Run Unit Test
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    steps: 
+      - name: Chekout code
+        uses: actions/checkout@v6
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup NodeJs App
+        uses: actions/setup-node@v6
         with:
           node-version: '20'
-          cache: 'npm'
+          cache: npm
 
       - name: Install dependencies
         run: npm install
-
-      - name: Run tests
+      
+      - name: Run Unit Test
         run: npm test
 
-  upload_artifact:
-    name: Upload Artifact
+  Upload-Artifacts:
+    name: Upload Artifacts
     runs-on: ubuntu-latest
-    needs: [build, unit_test]
+    needs: Unit-Test
     steps:
-      - name: Download artifact
-        uses: actions/download-artifact@v4
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v6
         with:
           name: node-app-source
           path: .
-
-      - name: Archive app
-        run: tar -czf hello-node-app.tar.gz app.js package.json package-lock.json Dockerfile k8s
-
-      - name: Upload archived artifact
-        uses: actions/upload-artifact@v4
+        
+      - name: Archive Artifacts
+        run: tar -czvf hello-node-app.tar.gz app.js package.json package-lock.json Dockerfile k8s
+    
+      - name: Upload Archived Artifacts
+        uses: actions/upload-artifact@v6
         with:
-          name: archived-app
+          name: hello-node-app-archive
           path: hello-node-app.tar.gz
 
-  docker-build:
-    name: Docker Build
-    runs-on: ubuntu-latest
-    needs: upload_artifact
-    steps:
-      - name: Checkout Source
-        uses: actions/checkout@v4
 
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
+  Docker-Build:
+    name: Build Docker Image 
+    runs-on: ubuntu-latest
+    needs: Upload-Artifacts
+    steps: 
+      - name : Checkout Source code
+        uses: actions/checkout@v6
+      
+      - name: Login Docker Hub
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build Docker Image
-        run: |
-          docker build -t ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} .
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
 
-      - name: Push Docker Image
-        run: |
-          docker push ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
 
-      - name: Save image to tar
-        run: |
-          docker save -o image.tar ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: ${{ vars.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          # This line replaces "docker save" by exporting the image directly to a tarball local file
+          outputs: type=docker,dest=image.tar
+
+      - name: Run Snyk to check Docker image for vulnerabilities
+        uses: snyk/actions/docker@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          image: ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          args: --file=Dockerfile
 
       - name: Upload docker image artifact
         uses: actions/upload-artifact@v4
@@ -114,47 +137,57 @@ jobs:
           name: docker-image
           path: image.tar
 
-  deploy:
-    name: Deploy
+  Deploy-K8s:
+    name: Deploy to Kubernetes Cluster
     runs-on: ubuntu-latest
-    needs: docker-build
+    needs: Docker-Build
     if: github.ref == 'refs/heads/main'
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Download Docker image
-        uses: actions/download-artifact@v4
+        uses: actions/checkout@v6
+      
+      - name: Download Docker image artifact
+        uses: actions/download-artifact@v6
         with:
           name: docker-image
           path: .
 
-      - name: Install kind
+      - name: Create k8s Kind Cluster
+        uses: helm/kind-action@v1.12.0 
+        with:
+          cluster_name: my-test-cluster
+
+      - name: Verify Cluster
         run: |
-          curl -Lo kind https://kind.sigs.k8s.io/dl/v0.26.0/kind-linux-amd64
-          chmod +x kind
-          sudo mv kind /usr/local/bin/kind
+          kubectl cluster-info
+          kubectl get nodes
 
-      - name: Install kubectl
-        run: |
-          curl -LO "https://dl.k8s.io/release/v1.30.0/bin/linux/amd64/kubectl"
-          chmod +x kubectl
-          sudo mv kubectl /usr/local/bin/kubectl
-
-      - name: Create kind cluster
-        run: kind create cluster --name ${K8S_CLUSTER_NAME}
-
-      - name: Load Docker image into kind
+      - name: Load Docker image into Kind Cluster
         run: |
           docker load -i image.tar
           kind load docker-image ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} --name ${K8S_CLUSTER_NAME}
 
-      - name: Deploy to Kubernetes
+      - name: Deploy to Kind Cluster
         run: |
-          kubectl apply -f k8s/deployment.yml
-          kubectl apply -f k8s/service.yml
-          kubectl set image deployment/hello-world-app hello-world-app=${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
-          kubectl rollout status deployment/hello-world-app --timeout=120s
+          kubectl apply -f k8s/deployment.yaml
+          kubectl apply -f k8s/service.yaml
+          kubectl set image deployment/${{ env.APP_NAME }} ${APP_NAME}=${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} -n default
+          kubectl rollout status deployment/${{ env.APP_NAME }} -n default
 
-      - name: Verify deployment
-        run: kubectl get pods,svc
+      - name: Verify Deployment
+        run: |
+          kubectl get pods -n default
+          kubectl get svc -n default
+
+      - name: Expose application port for DAST
+        run: |
+          # Forwarding Kubernetes service port to runner's localhost background process
+          kubectl port-forward svc/${{ env.APP_NAME }} 9092:8080 &
+          sleep 5 
+
+      - name: Run OWASP ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.14.0
+        with:
+          target: 'http://localhost:9092'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fail_action: true
