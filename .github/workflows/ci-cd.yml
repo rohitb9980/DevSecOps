@@ -194,7 +194,7 @@ jobs:
         run: |
           # Wait for service to be ready
 
-          kubectl wait --for=condition=ready pod -l app=${{ env.APP_NAME }} -n default --timeout=500s
+          kubectl wait --for=condition=ready pod -l app=${{ env.APP_NAME }} -n default --timeout=30s
 
           # Forwarding Kubernetes service port to runner's localhost background process
 
