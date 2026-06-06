@@ -196,7 +196,7 @@ jobs:
         run: |
           # Forwarding Kubernetes service port to runner's localhost background process
 
-          kubectl port-forward svc/${{ env.SERVICE_NAME }} 3000:3000 &
+          kubectl port-forward svc/${{ env.SERVICE_NAME }} 3000:80 &
           sleep 10 
 
           echo "Testing connection to port-forwarded service..."
