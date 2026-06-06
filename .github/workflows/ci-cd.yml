@@ -6,7 +6,8 @@ on:
 
 env:
   SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-  APP_NAME: hello-world-app
+  DEPLOYMENT_NAME: hello-world-app 
+  SERVICE_NAME: hello-world-app-service  
   IMAGE_NAME: hello-world-app
   IMAGE_TAG: ${{ github.sha }}
   k8s_cluster_name: hello-world-cluster
@@ -182,9 +183,10 @@ jobs:
         run: |
           kubectl apply -f k8s/deployment.yml
           kubectl apply -f k8s/service.yml
-          kubectl set image deployment/${{ env.APP_NAME }} ${APP_NAME}=${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} -n default
-          kubectl rollout status deployment/${{ env.APP_NAME }} -n default
-
+          kubectl set image deployment/${{ env.DEPLOYMENT_NAME }} ${{ env.DEPLOYMENT_NAME }}=${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} -n default
+          
+          kubectl rollout status deployment/${{ env.DEPLOYMENT_NAME }} -n default
+          
       - name: Verify Deployment
         run: |
           kubectl get pods -n default
@@ -194,8 +196,11 @@ jobs:
         run: |
           # Forwarding Kubernetes service port to runner's localhost background process
 
-          kubectl port-forward svc/${{ env.APP_NAME }} 3000:8080 &
+          kubectl port-forward svc/${{ env.SERVICE_NAME }} 3000:3000 &
           sleep 10 
+
+          echo "Testing connection to port-forwarded service..."
+          curl -I http://localhost:3000 || echo "WARNING: App is unreachable on port 3000"
 
       - name: Run OWASP ZAP Baseline Scan
         uses: zaproxy/action-baseline@v0.14.0
